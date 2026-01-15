@@ -5,9 +5,10 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useRole } from '@/context/RoleContext';
 import Link from 'next/link';
-import { INDIAN_CITIES } from '@/lib/constants'; // <--- IMPORT SHARED CONSTANT
-import { 
-  UploadCloud, Video, Loader2, Terminal, CheckCircle2, MapPin, Lock 
+import { INDIAN_CITIES } from '@/lib/constants';
+import { supabase } from '@/lib/supabase';
+import {
+  UploadCloud, Video, Loader2, Terminal, CheckCircle2, MapPin, Lock
 } from 'lucide-react';
 
 export default function UploadPage() {
@@ -22,7 +23,7 @@ export default function UploadPage() {
   const [file, setFile] = useState<File | null>(null);
   const [uploadLoading, setUploadLoading] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
-  
+
   const [venueName, setVenueName] = useState('');
   const [location, setLocation] = useState('');
   const [address, setAddress] = useState('');
@@ -36,25 +37,42 @@ export default function UploadPage() {
     if (!file || !venueName || !address || !user) return;
 
     setUploadLoading(true);
-    setLogs([]); 
+    setLogs([]);
     addLog(`Initializing System...`);
     addLog(`Target: ${venueName}`);
 
+    let tempFilePath = '';
+
     try {
-      addLog(`Reading file: ${file.name} (${(file.size/1024/1024).toFixed(2)}MB)`);
-      const bytes = await file.arrayBuffer();
-      const videoData = new Uint8Array(bytes);
-      const base64Video = Buffer.from(videoData).toString('base64');
-      
-      addLog(`Stream encrypted. Uploading to Gemini 3.0...`);
+      addLog(`Reading file: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)`);
+
+      // Upload to Supabase temp storage
+      const fileExt = file.name.split('.').pop();
+      const fileName = `temp_${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+      tempFilePath = `temp-analysis/${fileName}`;
+
+      addLog(`Stream encrypted. Uploading to secure staging...`);
+
+      const { error: uploadError } = await supabase.storage
+        .from('venues')
+        .upload(tempFilePath, file);
+
+      if (uploadError) throw new Error(`Upload failed: ${uploadError.message}`);
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('venues')
+        .getPublicUrl(tempFilePath);
+
       addLog(`Analyzing frames for NFPA compliance...`);
 
+      // Call API with URL
       const response = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: user.id,
-          video: base64Video,
+          videoUrl: publicUrl,
+          tempFilePath: tempFilePath, // Pass this so API can delete it
           venueName,
           location,
           address,
@@ -63,19 +81,33 @@ export default function UploadPage() {
         })
       });
 
+      if (!response.ok) {
+        // Clean up on error
+        await supabase.storage.from('venues').remove([tempFilePath]);
+        const errorText = await response.text();
+        throw new Error(`Analysis failed: ${errorText}`);
+      }
+
       const data = await response.json();
-      if (!data.success) throw new Error(data.error);
+      if (!data.success) {
+        await supabase.storage.from('venues').remove([tempFilePath]);
+        throw new Error(data.error);
+      }
 
       addLog(`SUCCESS. Venue ID: ${data.venue.id}`);
       addLog(`Redirecting to Photo Lab...`);
-      
+
       setTimeout(() => {
         router.push(`/venue/${data.venue.id}/photos`);
       }, 1500);
 
     } catch (error: any) {
       addLog(`ERROR: ${error.message}`);
-      setUploadLoading(false); 
+      // Clean up temp file on error
+      if (tempFilePath) {
+        await supabase.storage.from('venues').remove([tempFilePath]);
+      }
+      setUploadLoading(false);
     }
   };
 
@@ -116,9 +148,9 @@ export default function UploadPage() {
     <div className="min-h-screen bg-[#263238] text-white p-6 flex items-center justify-center pt-24">
       <div className="w-full max-w-5xl grid md:grid-cols-5 gap-8">
         <div className="md:col-span-2 pt-10">
-          <h1 className="text-4xl font-black mb-4">Upload <br/><span className="text-[#C6FF00]">Venue</span></h1>
-          <p className="text-gray-400 mb-8 leading-relaxed">Initialize a new verification scan. Upload a raw video walkthrough.<br/><br/><span className="text-white font-bold">Note:</span> Address is required for compliance but remains private.</p>
-          <div className="flex items-center gap-3 text-sm text-gray-300"><CheckCircle2 size={12} className="text-[#C6FF00]"/> <span>Max file size: 100MB</span></div>
+          <h1 className="text-4xl font-black mb-4">Upload <br /><span className="text-[#C6FF00]">Venue</span></h1>
+          <p className="text-gray-400 mb-8 leading-relaxed">Initialize a new verification scan. Upload a raw video walkthrough.<br /><br /><span className="text-white font-bold">Note:</span> Address is required for compliance but remains private.</p>
+          <div className="flex items-center gap-3 text-sm text-gray-300"><CheckCircle2 size={12} className="text-[#C6FF00]" /> <span>Max file size: 100MB</span></div>
         </div>
         <div className="md:col-span-3 bg-[#37474F] rounded-3xl p-8 border border-white/5 shadow-2xl">
           <form onSubmit={handleUpload} className="space-y-6">
@@ -130,15 +162,8 @@ export default function UploadPage() {
               <label className="text-xs font-bold uppercase tracking-widest text-gray-400">Location</label>
               <div className="grid grid-cols-2 gap-4 mb-2">
                 <input type="text" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Area (e.g. Bandra)" className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-[#C6FF00] outline-none" required />
-                <select 
-                  value={city} 
-                  onChange={(e) => setCity(e.target.value)} 
-                  className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-[#C6FF00] outline-none appearance-none"
-                >
-                  {/* UPDATED TO USE SHARED CITIES LIST */}
-                  {INDIAN_CITIES.map((c) => (
-                    <option key={c} value={c} className="bg-[#37474F] text-white">{c}</option>
-                  ))}
+                <select value={city} onChange={(e) => setCity(e.target.value)} className="w-full bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-[#C6FF00] outline-none appearance-none">
+                  {INDIAN_CITIES.map((c) => (<option key={c} value={c} className="bg-[#37474F] text-white">{c}</option>))}
                 </select>
               </div>
               <div className="relative group">
