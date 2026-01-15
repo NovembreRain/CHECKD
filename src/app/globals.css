@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+:root {
+  --background: #263238; 
+  --foreground: #ffffff;
+  --lime-primary: #C6FF00;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Force Dark Mode Calendar with Lime Accents */
+input {
+  color-scheme: dark !important;
+  accent-color: var(--lime-primary) !important;
+}
+
+/* Style the native picker icons to look Lime */
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  /* This filter turns the default icon into a lime-colored one */
+  filter: invert(80%) sepia(100%) saturate(1000%) hue-rotate(20deg) !important;
+}
+
+/* Standard CSS Classes (Replacing @utility to fix errors) */
+.bg-brand-charcoal {
+  background-color: #263238;
+}
+
+.text-brand-lime {
+  color: #C6FF00;
+}
