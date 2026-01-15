@@ -39,40 +39,39 @@ export default function UploadPage() {
     setUploadLoading(true);
     setLogs([]);
     addLog(`Initializing System...`);
-    addLog(`Target: ${venueName}`);
 
     let tempFilePath = '';
 
     try {
       addLog(`Reading file: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)`);
 
-      // Upload to Supabase temp storage
+      // Step 1: Upload to Supabase TEMPORARILY
       const fileExt = file.name.split('.').pop();
       const fileName = `temp_${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
       tempFilePath = `temp-analysis/${fileName}`;
 
       addLog(`Stream encrypted. Uploading to secure staging...`);
-
       const { error: uploadError } = await supabase.storage
         .from('venues')
         .upload(tempFilePath, file);
 
       if (uploadError) throw new Error(`Upload failed: ${uploadError.message}`);
 
+      // Get public URL (or signed URL if bucket is private, assuming public for now based on context)
       const { data: { publicUrl } } = supabase.storage
         .from('venues')
         .getPublicUrl(tempFilePath);
 
       addLog(`Analyzing frames for NFPA compliance...`);
 
-      // Call API with URL
+      // Step 2: Send URL to API (NOT base64)
       const response = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: user.id,
-          videoUrl: publicUrl,
-          tempFilePath: tempFilePath, // Pass this so API can delete it
+          videoUrl: publicUrl, // Send URL, not base64!
+          tempFilePath: tempFilePath, // So API can delete it
           venueName,
           location,
           address,
@@ -82,10 +81,10 @@ export default function UploadPage() {
       });
 
       if (!response.ok) {
-        // Clean up on error
+        // Attempt cleanup if API fails without cleaning up
         await supabase.storage.from('venues').remove([tempFilePath]);
         const errorText = await response.text();
-        throw new Error(`Analysis failed: ${errorText}`);
+        throw new Error(`API Error: ${errorText}`);
       }
 
       const data = await response.json();
@@ -97,15 +96,17 @@ export default function UploadPage() {
       addLog(`SUCCESS. Venue ID: ${data.venue.id}`);
       addLog(`Redirecting to Photo Lab...`);
 
-      setTimeout(() => {
-        router.push(`/venue/${data.venue.id}/photos`);
-      }, 1500);
+      setTimeout(() => router.push(`/venue/${data.venue.id}/photos`), 1500);
 
     } catch (error: any) {
       addLog(`ERROR: ${error.message}`);
-      // Clean up temp file on error
+      // Cleanup on client-side error if path exists
       if (tempFilePath) {
-        await supabase.storage.from('venues').remove([tempFilePath]);
+        try {
+          await supabase.storage.from('venues').remove([tempFilePath]);
+        } catch (cleanupErr) {
+          console.error("Cleanup failed", cleanupErr);
+        }
       }
       setUploadLoading(false);
     }

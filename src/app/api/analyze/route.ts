@@ -1,9 +1,15 @@
 import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleAIFileManager, FileState } from '@google/generative-ai/server';
 import { createClient } from '@supabase/supabase-js';
 import { extractAndSaveSemanticData } from '@/lib/semantic-extractor';
 import { FALLBACK_ANALYSIS } from '@/lib/constants';
 import { v4 as uuidv4 } from 'uuid';
+import fs from 'fs';
+import path from 'path';
+import { pipeline } from 'stream/promises';
+import { Readable } from 'stream';
+import os from 'os';
 
 // Environment Variable Validation
 const GENAI_KEY = process.env.GEMINI_API_KEY;
@@ -15,6 +21,8 @@ if (!GENAI_KEY || !SUPABASE_URL || !SERVICE_KEY) {
 }
 
 const genAI = new GoogleGenerativeAI(GENAI_KEY!);
+const fileManager = new GoogleAIFileManager(GENAI_KEY!);
+
 const supabase = createClient(SUPABASE_URL!, SERVICE_KEY!, {
   auth: { persistSession: false, autoRefreshToken: false }
 });
@@ -41,12 +49,35 @@ function cleanAndParseJSON(text: string) {
   }
 }
 
+/**
+ * Downloads a file from a URL to a temporary path using streams.
+ */
+async function downloadDataToTemp(url: string, filename: string): Promise<string> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Failed to fetch video: ${response.statusText}`);
+  if (!response.body) throw new Error(`No body in response`);
+
+  const tempDir = os.tmpdir();
+  const filePath = path.join(tempDir, filename);
+  const fileStream = fs.createWriteStream(filePath);
+
+  // @ts-ignore - response.body is a ReadableStream, pipeline handles it
+  await pipeline(Readable.fromWeb(response.body), fileStream);
+
+  console.log(`Downloaded to ${filePath}`);
+  return filePath;
+}
+
 export async function POST(request: Request) {
+  let localFilePath: string | null = null;
+  let geminiFileUri: string | null = null;
+  let geminiFileName: string | null = null;
+
   try {
     const body = await request.json();
     const {
       videoUrl,
-      tempFilePath,
+      tempFilePath, // Supabase storage path
       venueName,
       location,
       city,
@@ -62,23 +93,45 @@ export async function POST(request: Request) {
 
     console.log(`📹 Analyzing venue: ${venueName}`);
 
-    // 2. Fetch Video to Buffer (Bypasses Vercel Body Size Limits)
-    const vidRes = await fetch(videoUrl);
-    if (!vidRes.ok) throw new Error(`Failed to fetch video from URL: ${vidRes.statusText}`);
+    // 2. Download Media to Temp (Stream) - Bypasses Vercel Body Limit
+    const tempFileName = `${uuidv4()}.mp4`;
+    localFilePath = await downloadDataToTemp(videoUrl, tempFileName);
 
-    const arrayBuffer = await vidRes.arrayBuffer();
-    const base64Data = Buffer.from(arrayBuffer).toString('base64');
+    // 3. Upload to Gemini File Manager
+    console.log('📤 Uploading to Gemini File Manager...');
+    const uploadResponse = await fileManager.uploadFile(localFilePath, {
+      mimeType: "video/mp4",
+      displayName: venueName
+    });
 
-    // 3. Initialize Gemini 2.0 Flash
+    geminiFileUri = uploadResponse.file.uri;
+    geminiFileName = uploadResponse.file.name;
+    console.log(`✅ Uploaded to Gemini: ${geminiFileUri}`);
+
+    // 4. Wait for processing (Videos are not immediately available)
+    let file = await fileManager.getFile(geminiFileName);
+    while (file.state === FileState.PROCESSING) {
+      console.log('⏳ Gemini processing video...');
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      file = await fileManager.getFile(geminiFileName);
+    }
+
+    if (file.state === FileState.FAILED) {
+      throw new Error("Gemini video processing failed");
+    }
+    console.log('✅ Video processing complete');
+
+    // 5. Initialize Gemini 3.0 
     const model = genAI.getGenerativeModel({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-3-flash-preview', // Using Gemini 3 Flash
       generationConfig: {
         temperature: 0.2,
-        maxOutputTokens: 4000,
+        maxOutputTokens: 8192,
         responseMimeType: 'application/json',
       },
     });
 
+    // 6. Generate Content
     const prompt = `
     You are CHECKD's Venue Intelligence Engine.
     Analyze this venue video comprehensively.
@@ -108,12 +161,16 @@ export async function POST(request: Request) {
 
     let analysisData: any = FALLBACK_ANALYSIS;
 
-    // 4. AI Analysis
     try {
-      console.log('🤖 Calling Gemini 2.0 Flash...');
+      console.log('🤖 Prompting Gemini...');
       const result = await model.generateContent([
         prompt,
-        { inlineData: { mimeType: 'video/mp4', data: base64Data } },
+        {
+          fileData: {
+            mimeType: "video/mp4",
+            fileUri: geminiFileUri
+          }
+        }
       ]);
 
       const response = await result.response;
@@ -121,16 +178,15 @@ export async function POST(request: Request) {
 
       if (parsed) {
         analysisData = parsed;
-        console.log('✅ AI Analysis Complete');
+        console.log('✅ Analysis Success');
       } else {
-        console.warn('⚠️ JSON Parse failed. Using Fallback.');
+        console.warn('⚠️ JSON Parse failed');
       }
     } catch (geminiError: any) {
-      console.error('❌ Gemini error:', geminiError.message);
-      // Continue with fallback to ensure DB record is created
+      console.error('❌ Generator error:', geminiError.message);
     }
 
-    // 5. Database Persistence
+    // 7. Database Persistence
     const venueId = uuidv4();
     const dbPayload = {
       id: venueId,
@@ -167,38 +223,72 @@ export async function POST(request: Request) {
       .select()
       .single();
 
-    if (dbError) throw new Error(`Supabase Insert Error: ${dbError.message}`);
+    if (dbError) throw new Error(`DB Insert Error: ${dbError.message}`);
 
-    // 6. Semantic Extraction (Async-style, won't block return if it fails)
+    // 8. Semantic Extraction
     try {
       await extractAndSaveSemanticData(venue.id, {
         semanticDimensions: analysisData.semanticDimensions
       });
     } catch (semanticError: any) {
-      console.warn('⚠️ Semantic extraction warning:', semanticError.message);
+      console.warn('⚠️ Semantic warn:', semanticError.message);
     }
 
-    // 7. Cleanup Temporary File
+    // 9. Cleanup
+    // Remove from Google File Manager
+    if (geminiFileName) {
+      try {
+        await fileManager.deleteFile(geminiFileName);
+        console.log('🗑️ Deleted Gemini file');
+      } catch (e) {
+        console.error('Failed to delete Gemini file', e);
+      }
+    }
+
+    // Remove from Supabase Storage (Staging)
     if (tempFilePath) {
       const { error: storageError } = await supabase.storage
         .from('venues')
         .remove([tempFilePath]);
-
-      if (storageError) console.error('❌ Cleanup Failed:', storageError.message);
-      else console.log('🗑️ Temp file deleted');
+      if (!storageError) console.log('🗑️ Deleted Supabase temp file');
     }
 
     return NextResponse.json({
       success: true,
       venue: { id: venue.id, name: venue.name },
-      message: 'Venue analyzed and synchronized successfully',
+      message: 'Analysis complete',
     });
 
   } catch (error: any) {
     console.error('CRITICAL_API_ERROR:', error);
+
+    // Cleanup Local Temp File
+    if (localFilePath && fs.existsSync(localFilePath)) {
+      try {
+        fs.unlinkSync(localFilePath);
+      } catch (e) { console.error('Local cleanup failed', e); }
+    }
+
+    // Cleanup Google File if it exists and error happened later
+    if (geminiFileName) {
+      try {
+        await fileManager.deleteFile(geminiFileName);
+      } catch (e) { }
+    }
+
     return NextResponse.json(
       { success: false, error: error.message || 'Internal Server Error' },
       { status: 500 }
     );
+  } finally {
+    // Ensure local file is always cleaned up
+    if (localFilePath && fs.existsSync(localFilePath)) {
+      try {
+        fs.unlinkSync(localFilePath);
+        console.log('🗑️ Local temp file cleaned');
+      } catch (e) {
+        console.error('Final cleanup failed', e);
+      }
+    }
   }
 }
