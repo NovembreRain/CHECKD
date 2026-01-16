@@ -137,7 +137,7 @@ export async function POST(request: Request) {
         "vibe": number, "safety": number, "acoustics": number, 
         "lighting": number, "spaciousness": number, "accessibility": number
       },
-      "suggestions": [string],
+      "suggestions": [string], // Generate at least 12 unique, creative, and specific suggestions for how to use/configure the space.
       "best_use_cases": [string],
       "electricalSystem": { "outletsCount": number, "types": "string", "nfpa70Status": "compliant" | "needs_inspection" },
       "fireSafetyAndEgress": { "exitsCount": number, "nfpa101Status": "compliant" | "needs_inspection" },

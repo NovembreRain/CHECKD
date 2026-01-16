@@ -3,10 +3,11 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { 
-  ChevronLeft, Zap, MapPin, Share2, Heart, Star, 
+import {
+  ChevronLeft, Zap, MapPin, Share2, Heart, Star,
   ShieldCheck, Users, Maximize, Clock, Power, Layout, X,
-  Briefcase, PartyPopper, Music, Coffee, Loader2
+  Briefcase, PartyPopper, Music, Coffee, Loader2, Lightbulb,
+  Sparkles, BrainCircuit, ChevronUp, ChevronDown, CheckCircle2
 } from 'lucide-react';
 import Image from 'next/image';
 import { VenueRadarChart } from '@/components/RadarChart';
@@ -29,7 +30,7 @@ export default function VenueDetailsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuth();
-  
+
   const backLink = searchParams.get('from') || '/search';
 
   const [venue, setVenue] = useState<any>(null);
@@ -38,6 +39,7 @@ export default function VenueDetailsPage() {
   const [isSaved, setIsSaved] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showGallery, setShowGallery] = useState(false);
+  const [showAllSuggestions, setShowAllSuggestions] = useState(false);
 
   // --- DATA FETCHING ---
   useEffect(() => {
@@ -88,7 +90,7 @@ export default function VenueDetailsPage() {
         const similar = getSimilarVenues(venueData, topEvent, cityVenues);
         setSimilarVenues(similar);
       }
-      
+
       setLoading(false);
     }
     loadData();
@@ -130,16 +132,16 @@ export default function VenueDetailsPage() {
 
       {/* --- HERO HEADER --- */}
       <div className="relative h-[65vh] w-full group cursor-pointer" onClick={() => setShowGallery(true)}>
-        <Image 
-          src={venue.venue_image_url || '/placeholder.jpg'} 
-          alt={venue.name} 
-          fill 
-          className="object-cover opacity-80 group-hover:scale-105 transition-transform duration-[2s]" 
+        <Image
+          src={venue.venue_image_url || '/placeholder.jpg'}
+          alt={venue.name}
+          fill
+          className="object-cover opacity-80 group-hover:scale-105 transition-transform duration-[2s]"
           priority
           unoptimized
         />
         <div className="absolute inset-0 bg-gradient-to-t from-[#263238] via-[#263238]/40 to-[#263238]/30" />
-        
+
         {/* Navigation */}
         <div className="absolute top-0 left-0 right-0 p-6 pt-28 flex justify-between items-start z-10 pointer-events-none">
           <button onClick={(e) => { e.stopPropagation(); router.push(backLink); }} className="pointer-events-auto px-4 py-2 bg-black/40 backdrop-blur-md border border-white/10 rounded-full text-sm font-bold hover:bg-black/60 transition-colors flex items-center gap-2">
@@ -160,9 +162,9 @@ export default function VenueDetailsPage() {
           </div>
           <h1 className="text-5xl md:text-6xl font-black leading-tight mb-4 drop-shadow-lg">{venue.name}</h1>
           <div className="flex flex-wrap items-center gap-6 text-lg text-gray-200">
-            <span className="flex items-center gap-2"><MapPin size={18} className="text-[#C6FF00]"/> {venue.location}, {venue.city}</span>
+            <span className="flex items-center gap-2"><MapPin size={18} className="text-[#C6FF00]" /> {venue.location}, {venue.city}</span>
             <span className="flex items-center gap-2 bg-black/40 px-3 py-1 rounded-full text-sm border border-white/10">
-              <Star size={14} className="text-yellow-400" fill="currentColor"/> {venue.user_score || "New"}
+              <Star size={14} className="text-yellow-400" fill="currentColor" /> {venue.user_score || "New"}
             </span>
           </div>
         </div>
@@ -173,10 +175,10 @@ export default function VenueDetailsPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-12 grid lg:grid-cols-3 gap-12">
-        
+
         {/* --- LEFT COLUMN: DETAILS --- */}
         <div className="lg:col-span-2 space-y-12">
-          
+
           {/* Event Compatibility */}
           <section>
             <h3 className="text-xl font-bold mb-6">Event Compatibility</h3>
@@ -200,45 +202,45 @@ export default function VenueDetailsPage() {
 
           {/* Space Reality & Logistics */}
           <section className="grid md:grid-cols-2 gap-6">
-             <div className="bg-[#37474F]/30 border border-white/5 p-6 rounded-2xl">
-                <h4 className="text-gray-400 text-xs font-bold uppercase tracking-widest mb-6 flex items-center gap-2">
-                  <Users size={14} /> Guest Comfort Bands
-                </h4>
-                <div className="space-y-6">
-                  <div>
-                    <div className="flex justify-between text-sm mb-2"><span className="text-emerald-400 font-bold">Ideal</span> <span>15 - {capacity}</span></div>
-                    <div className="h-2 w-full bg-black/40 rounded-full"><div className="h-full bg-emerald-400 w-[80%] rounded-full shadow-[0_0_10px_rgba(52,211,153,0.5)]" /></div>
-                  </div>
-                  <div>
-                    <div className="flex justify-between text-sm mb-2"><span className="text-amber-400 font-bold">Stretch</span> <span>{capacity} - {Math.round(capacity * 1.2)}</span></div>
-                    <div className="h-2 w-full bg-black/40 rounded-full"><div className="h-full bg-amber-400 w-[50%] rounded-full" /></div>
-                  </div>
+            <div className="bg-[#37474F]/30 border border-white/5 p-6 rounded-2xl">
+              <h4 className="text-gray-400 text-xs font-bold uppercase tracking-widest mb-6 flex items-center gap-2">
+                <Users size={14} /> Guest Comfort Bands
+              </h4>
+              <div className="space-y-6">
+                <div>
+                  <div className="flex justify-between text-sm mb-2"><span className="text-emerald-400 font-bold">Ideal</span> <span>15 - {capacity}</span></div>
+                  <div className="h-2 w-full bg-black/40 rounded-full"><div className="h-full bg-emerald-400 w-[80%] rounded-full shadow-[0_0_10px_rgba(52,211,153,0.5)]" /></div>
                 </div>
-             </div>
+                <div>
+                  <div className="flex justify-between text-sm mb-2"><span className="text-amber-400 font-bold">Stretch</span> <span>{capacity} - {Math.round(capacity * 1.2)}</span></div>
+                  <div className="h-2 w-full bg-black/40 rounded-full"><div className="h-full bg-amber-400 w-[50%] rounded-full" /></div>
+                </div>
+              </div>
+            </div>
 
-             <div className="bg-[#37474F]/30 border border-white/5 p-6 rounded-2xl space-y-6">
-                <div className="flex items-start gap-4">
-                   <Clock className="text-[#C6FF00] mt-1" size={20} />
-                   <div>
-                      <p className="font-bold text-white">Setup Time</p>
-                      <p className="text-sm text-gray-400">{analysis.logistics?.estimatedSetupTime || "30-45 mins"}</p>
-                   </div>
+            <div className="bg-[#37474F]/30 border border-white/5 p-6 rounded-2xl space-y-6">
+              <div className="flex items-start gap-4">
+                <Clock className="text-[#C6FF00] mt-1" size={20} />
+                <div>
+                  <p className="font-bold text-white">Setup Time</p>
+                  <p className="text-sm text-gray-400">{analysis.logistics?.estimatedSetupTime || "30-45 mins"}</p>
                 </div>
-                <div className="flex items-start gap-4">
-                   <Power className="text-[#C6FF00] mt-1" size={20} />
-                   <div>
-                      <p className="font-bold text-white">Power</p>
-                      <p className="text-sm text-gray-400">{analysis.logistics?.powerSockets || "Standard 15A"}</p>
-                   </div>
+              </div>
+              <div className="flex items-start gap-4">
+                <Power className="text-[#C6FF00] mt-1" size={20} />
+                <div>
+                  <p className="font-bold text-white">Power</p>
+                  <p className="text-sm text-gray-400">{analysis.logistics?.powerSockets || "Standard 15A"}</p>
                 </div>
-             </div>
+              </div>
+            </div>
           </section>
 
           {/* Intelligence Report */}
           <section className="bg-[#37474F]/30 border border-white/5 rounded-3xl p-8">
             <div className="flex items-center justify-between mb-6">
-               <h3 className="text-2xl font-bold flex items-center gap-2"><Zap className="text-[#C6FF00]" /> Intelligence Report</h3>
-               <div className="bg-black/40 px-3 py-1 rounded-lg text-xs font-bold text-[#C6FF00] border border-[#C6FF00]/20">AI GENERATED</div>
+              <h3 className="text-2xl font-bold flex items-center gap-2"><Zap className="text-[#C6FF00]" /> Intelligence Report</h3>
+              <div className="bg-black/40 px-3 py-1 rounded-lg text-xs font-bold text-[#C6FF00] border border-[#C6FF00]/20">AI GENERATED</div>
             </div>
             <div className="flex flex-col md:flex-row gap-12 items-center">
               <div className="w-full md:w-1/2 aspect-square max-h-[300px]">
@@ -251,6 +253,59 @@ export default function VenueDetailsPage() {
                 </p>
               </div>
             </div>
+          </section>
+
+          {/* AI Suggestions Dropdown */}
+          <section className="bg-[#37474F]/30 border border-white/5 rounded-3xl p-8">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-bold flex items-center gap-2">
+                <Lightbulb className="text-[#C6FF00]" size={20} />
+                AI Usage Suggestions
+              </h3>
+              <span className="text-xs bg-black/40 px-3 py-1 rounded-full text-gray-400 border border-white/5">
+                {(analysis.suggestions?.length || 0)} Ideas
+              </span>
+            </div>
+
+            <div className="space-y-4">
+              {/* Top 5 Always Visible */}
+              {(analysis.suggestions || ["No suggestions available."]).slice(0, 5).map((suggestion: string, i: number) => (
+                <div key={i} className="flex items-start gap-4 p-4 rounded-xl bg-black/20 hover:bg-black/30 transition-colors border border-white/5">
+                  <div className="mt-1 p-1.5 rounded-full bg-[#C6FF00]/10 text-[#C6FF00]">
+                    <Sparkles size={14} />
+                  </div>
+                  <p className="text-gray-300 text-sm leading-relaxed">{suggestion}</p>
+                </div>
+              ))}
+
+              {/* Collapsible Section */}
+              {showAllSuggestions && (
+                <div className="space-y-4 animate-in fade-in slide-in-from-top-4 duration-300">
+                  {(analysis.suggestions || []).slice(5).map((suggestion: string, i: number) => (
+                    <div key={i + 5} className="flex items-start gap-4 p-4 rounded-xl bg-black/20 hover:bg-black/30 transition-colors border border-white/5">
+                      <div className="mt-1 p-1.5 rounded-full bg-purple-500/10 text-purple-400">
+                        <BrainCircuit size={14} />
+                      </div>
+                      <p className="text-gray-300 text-sm leading-relaxed">{suggestion}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Toggle Button */}
+            {(analysis.suggestions?.length || 0) > 5 && (
+              <button
+                onClick={() => setShowAllSuggestions(!showAllSuggestions)}
+                className="w-full mt-6 py-3 flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-white hover:bg-white/5 rounded-xl transition-all border border-white/5 hover:border-white/20"
+              >
+                {showAllSuggestions ? (
+                  <>Show Less <ChevronUp size={14} /></>
+                ) : (
+                  <>View {(analysis.suggestions?.length || 0) - 5} More Ideas <ChevronDown size={14} /></>
+                )}
+              </button>
+            )}
           </section>
 
           {/* Similar Venues */}
@@ -268,9 +323,9 @@ export default function VenueDetailsPage() {
 
         {/* --- RIGHT COLUMN: BOOKING --- */}
         <div className="lg:col-span-1">
-          <BookingBox 
-            venueId={venue.id} 
-            pricePerHour={venue.price_per_hour} 
+          <BookingBox
+            venueId={venue.id}
+            pricePerHour={venue.price_per_hour}
             ownerId={venue.owner_id}
             userScore={venue.user_score}
           />
