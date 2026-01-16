@@ -6,8 +6,9 @@ import { supabase } from '@/lib/supabase';
 import {
   ChevronLeft, Zap, MapPin, Share2, Heart, Star,
   ShieldCheck, Users, Maximize, Clock, Power, Layout, X,
-  Briefcase, PartyPopper, Music, Coffee, Loader2, Lightbulb,
-  Sparkles, BrainCircuit, ChevronUp, ChevronDown, CheckCircle2
+  Briefcase, PartyPopper, Music, Coffee, Loader2,
+  // --- NEW IMPORTS ADDED HERE ---
+  Lightbulb, Sparkles, BrainCircuit, ChevronUp, ChevronDown
 } from 'lucide-react';
 import Image from 'next/image';
 import { VenueRadarChart } from '@/components/RadarChart';
@@ -39,6 +40,8 @@ export default function VenueDetailsPage() {
   const [isSaved, setIsSaved] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showGallery, setShowGallery] = useState(false);
+
+  // --- NEW STATE FOR SUGGESTIONS ---
   const [showAllSuggestions, setShowAllSuggestions] = useState(false);
 
   // --- DATA FETCHING ---
@@ -255,7 +258,7 @@ export default function VenueDetailsPage() {
             </div>
           </section>
 
-          {/* AI Suggestions Dropdown */}
+          {/* --- NEW SECTION: AI SUGGESTIONS --- */}
           <section className="bg-[#37474F]/30 border border-white/5 rounded-3xl p-8">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-xl font-bold flex items-center gap-2">
