@@ -10,6 +10,7 @@ import path from 'path';
 import { pipeline } from 'stream/promises';
 import { Readable } from 'stream';
 import os from 'os';
+import { del } from '@vercel/blob'; // <--- NEW IMPORT for Cleanup
 
 // Environment Variable Validation
 const GENAI_KEY = process.env.GEMINI_API_KEY;
@@ -27,9 +28,6 @@ const supabase = createClient(SUPABASE_URL!, SERVICE_KEY!, {
   auth: { persistSession: false, autoRefreshToken: false }
 });
 
-/**
- * Robust JSON repair utility to handle LLM edge cases
- */
 function cleanAndParseJSON(text: string) {
   try {
     return JSON.parse(text);
@@ -49,9 +47,6 @@ function cleanAndParseJSON(text: string) {
   }
 }
 
-/**
- * Downloads a file from a URL to a temporary path using streams.
- */
 async function downloadDataToTemp(url: string, filename: string): Promise<string> {
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Failed to fetch video: ${response.statusText}`);
@@ -61,7 +56,7 @@ async function downloadDataToTemp(url: string, filename: string): Promise<string
   const filePath = path.join(tempDir, filename);
   const fileStream = fs.createWriteStream(filePath);
 
-  // @ts-ignore - response.body is a ReadableStream, pipeline handles it
+  // @ts-ignore
   await pipeline(Readable.fromWeb(response.body), fileStream);
 
   console.log(`Downloaded to ${filePath}`);
@@ -70,14 +65,13 @@ async function downloadDataToTemp(url: string, filename: string): Promise<string
 
 export async function POST(request: Request) {
   let localFilePath: string | null = null;
-  let geminiFileUri: string | null = null;
   let geminiFileName: string | null = null;
+  let blobUrlToDelete: string | null = null;
 
   try {
     const body = await request.json();
     const {
-      videoUrl,
-      tempFilePath, // Supabase storage path
+      videoUrl, // This is the Vercel Blob URL now
       venueName,
       location,
       city,
@@ -91,9 +85,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
+    blobUrlToDelete = videoUrl; // Mark for deletion at the end
     console.log(`📹 Analyzing venue: ${venueName}`);
 
-    // 2. Download Media to Temp (Stream) - Bypasses Vercel Body Limit
+    // 2. Download Media from Blob to Temp (Stream)
+    // We download to /tmp so we can upload to Gemini via File API
     const tempFileName = `${uuidv4()}.mp4`;
     localFilePath = await downloadDataToTemp(videoUrl, tempFileName);
 
@@ -104,11 +100,11 @@ export async function POST(request: Request) {
       displayName: venueName
     });
 
-    geminiFileUri = uploadResponse.file.uri;
+    const geminiFileUri = uploadResponse.file.uri;
     geminiFileName = uploadResponse.file.name;
     console.log(`✅ Uploaded to Gemini: ${geminiFileUri}`);
 
-    // 4. Wait for processing (Videos are not immediately available)
+    // 4. Wait for processing
     let file = await fileManager.getFile(geminiFileName);
     while (file.state === FileState.PROCESSING) {
       console.log('⏳ Gemini processing video...');
@@ -121,9 +117,9 @@ export async function POST(request: Request) {
     }
     console.log('✅ Video processing complete');
 
-    // 5. Initialize Gemini 3.0 
+    // 5. Initialize Gemini 2.0 Flash
     const model = genAI.getGenerativeModel({
-      model: 'gemini-3-flash-preview', // Using Gemini 3 Flash
+      model: 'gemini-2.0-flash-exp',
       generationConfig: {
         temperature: 0.2,
         maxOutputTokens: 8192,
@@ -179,8 +175,6 @@ export async function POST(request: Request) {
       if (parsed) {
         analysisData = parsed;
         console.log('✅ Analysis Success');
-      } else {
-        console.warn('⚠️ JSON Parse failed');
       }
     } catch (geminiError: any) {
       console.error('❌ Generator error:', geminiError.message);
@@ -234,25 +228,6 @@ export async function POST(request: Request) {
       console.warn('⚠️ Semantic warn:', semanticError.message);
     }
 
-    // 9. Cleanup
-    // Remove from Google File Manager
-    if (geminiFileName) {
-      try {
-        await fileManager.deleteFile(geminiFileName);
-        console.log('🗑️ Deleted Gemini file');
-      } catch (e) {
-        console.error('Failed to delete Gemini file', e);
-      }
-    }
-
-    // Remove from Supabase Storage (Staging)
-    if (tempFilePath) {
-      const { error: storageError } = await supabase.storage
-        .from('venues')
-        .remove([tempFilePath]);
-      if (!storageError) console.log('🗑️ Deleted Supabase temp file');
-    }
-
     return NextResponse.json({
       success: true,
       venue: { id: venue.id, name: venue.name },
@@ -261,33 +236,38 @@ export async function POST(request: Request) {
 
   } catch (error: any) {
     console.error('CRITICAL_API_ERROR:', error);
-
-    // Cleanup Local Temp File
-    if (localFilePath && fs.existsSync(localFilePath)) {
-      try {
-        fs.unlinkSync(localFilePath);
-      } catch (e) { console.error('Local cleanup failed', e); }
-    }
-
-    // Cleanup Google File if it exists and error happened later
-    if (geminiFileName) {
-      try {
-        await fileManager.deleteFile(geminiFileName);
-      } catch (e) { }
-    }
-
     return NextResponse.json(
       { success: false, error: error.message || 'Internal Server Error' },
       { status: 500 }
     );
   } finally {
-    // Ensure local file is always cleaned up
+    // 9. FINAL CLEANUP
+
+    // Remove Gemini File
+    if (geminiFileName) {
+      try {
+        await fileManager.deleteFile(geminiFileName);
+        console.log('🗑️ Deleted Gemini file');
+      } catch (e) { console.error('Failed to delete Gemini file', e); }
+    }
+
+    // Remove Local Temp File
     if (localFilePath && fs.existsSync(localFilePath)) {
       try {
         fs.unlinkSync(localFilePath);
         console.log('🗑️ Local temp file cleaned');
       } catch (e) {
         console.error('Final cleanup failed', e);
+      }
+    }
+
+    // Remove Vercel Blob File (Save money)
+    if (blobUrlToDelete) {
+      try {
+        await del(blobUrlToDelete);
+        console.log('🗑️ Vercel Blob file cleaned');
+      } catch (e) {
+        console.error('Failed to delete blob', e);
       }
     }
   }

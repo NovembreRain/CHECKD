@@ -151,7 +151,7 @@ export default function UploadPage() {
         <div className="md:col-span-2 pt-10">
           <h1 className="text-4xl font-black mb-4">Upload <br /><span className="text-[#C6FF00]">Venue</span></h1>
           <p className="text-gray-400 mb-8 leading-relaxed">Initialize a new verification scan. Upload a raw video walkthrough.<br /><br /><span className="text-white font-bold">Note:</span> Address is required for compliance but remains private.</p>
-          <div className="flex items-center gap-3 text-sm text-gray-300"><CheckCircle2 size={12} className="text-[#C6FF00]" /> <span>Max file size: 100MB</span></div>
+          <div className="flex items-center gap-3 text-sm text-gray-300"><CheckCircle2 size={12} className="text-[#C6FF00]" /> <span>Max file size: 500MB</span></div>
         </div>
         <div className="md:col-span-3 bg-[#37474F] rounded-3xl p-8 border border-white/5 shadow-2xl">
           <form onSubmit={handleUpload} className="space-y-6">
@@ -182,7 +182,7 @@ export default function UploadPage() {
             <div className="space-y-2">
               <label className="text-xs font-bold uppercase tracking-widest text-gray-400">Walkthrough Video</label>
               <div className="relative border-2 border-dashed border-white/10 rounded-2xl p-8 text-center hover:border-[#C6FF00]/50 transition-colors bg-black/10 group cursor-pointer">
-                <input type="file" accept="video/mp4,video/quicktime" onChange={(e) => setFile(e.target.files?.[0] || null)} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                <input type="file" accept="video/mp4,video/quicktime,video/webm" onChange={(e) => setFile(e.target.files?.[0] || null)} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
                 <div className="flex flex-col items-center gap-3 pointer-events-none">
                   <UploadCloud size={24} className="text-gray-400 group-hover:text-[#C6FF00]" />
                   <p className="text-sm text-gray-300">{file ? <span className="text-[#C6FF00]">{file.name}</span> : 'Click to browse or drop file'}</p>
